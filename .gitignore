@@ -1,23 +1,44 @@
-### AL ###
-#Template for AL projects for Dynamics 365 Business Central
-#launch.json folder
+
+---
+
+### 2. **.gitignore**
+
+```gitignore
+# Backup files
+*.tar.gz
+*.zip
+*.bak
+backups/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
 .vscode/
-#Cache folder
-.alcache/
-#Symbols folder
-.alpackages/
-#Snapshots folder
-.snapshots/
-#Testing Output folder
-.output/
-#Extension App-file
-*.app
-#Rapid Application Development File
-rad.json
-#Translation Base-file
-*.g.xlf
-#License-files
-*.bclicense
-*.flf
-#Test results file
-TestResults.xml
+.idea/
+*.swp
+*.swo
+
+# Sensitive
+*.env
+*.key
+*.pem
+*.crt
+*.jks
+*secret*
+*password*
+*.cloudflared/*.json
+!configs/cloudflared-config.yml
+
+# Data
+ollama_data/
+pgdata/
+*.sqlite
+*.sqlite3
+
+# Temporary
+tmp/
+temp/
+*.tmp
