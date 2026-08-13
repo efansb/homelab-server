@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> Repositori ini berisi panduan dan skrip untuk menyiapkan homelab: instalasi Proxmox VE 8.3 pada laptop/PC tua, post-install, paket dasar host (PVE), konfigurasi SSH, contoh konfigurasi layar LED/I2C, dan skrip otomatisasi.
+> Repositori ini berisi panduan dan skrip untuk menyiapkan homelab: instalasi Proxmox VE 8.3 pada laptop/PC tua, post-install, paket dasar host (PVE), konfigurasi SSH, konfigurasi lid/layar (agar laptop tetap menyala saat ditutup dan layar mati setelah 10 menit idle), dan skrip otomatisasi.
 
 ## 📋 Spesifikasi Hardware (contoh)
 
@@ -12,7 +12,7 @@
 
 ## Tujuan
 
-Membuat host Proxmox VE 8.3 yang siap untuk menjalankan beberapa LXC/VM ringan untuk layanan home (Pi-hole, Home Assistant, Nextcloud, Jellyfin, dsb.). Dokumen ini berisi langkah instalasi Proxmox, post-install, skrip otomatis, dan contoh konfigurasi.
+Membuat host Proxmox VE 8.3 yang siap untuk menjalankan beberapa LXC/VM ringan untuk layanan home (Pi-hole, Home Assistant, Nextcloud, Jellyfin, dsb.). Dokumen ini berisi langkah instalasi Proxmox, post-install, skrip otomatis, konfigurasi lid/screen, dan contoh penggunaan.
 
 ---
 
@@ -53,9 +53,9 @@ apt update && apt full-upgrade -y
 
 Jalankan (sebagai root):
 
-apt install -y curl wget htop vim git net-tools lvm2 thin-provisioning-tools smartmontools hdparm i2c-tools python3-pip ufw fail2ban haveged
+apt install -y curl wget htop vim git net-tools lvm2 thin-provisioning-tools smartmontools hdparm python3-pip ufw fail2ban haveged
 
-Penjelasan singkat: curl/wget (download), htop (monitor), lvm2 (storage), smartmontools/hdparm (cek disk), i2c-tools/python3-pip (untuk LED/I2C), ufw/fail2ban (keamanan), haveged (entropy untuk VM).
+Penjelasan singkat: curl/wget (download), htop (monitor), lvm2 (storage), smartmontools/hdparm (cek disk), python3-pip (untuk tools tambahan), ufw/fail2ban (keamanan), haveged (entropy untuk VM).
 
 6) Swap (opsional, jika hanya 4 GB RAM)
 
@@ -99,40 +99,50 @@ ufw allow from 192.168.1.0/24 to any port 22 proto tcp
 ufw allow 8006/tcp    # Proxmox web UI
 ufw enable
 
-9) LED / small display (I2C) — contoh
+9) Lid (tutup layar) dan Screen-off (mati layar tapi server tetap menyala)
 
-- Pastikan kernel module i2c_dev dimuat dan perangkat I2C terhubung
-- Install i2c-tools & library Python:
+Tujuan konfigurasi ini:
+- Ketika laptop ditutup (lid close), server tetap menyala dan tidak suspend/hibernate.
+- Layar (backlight/console) otomatis mati setelah 10 menit tidak ada aktivitas untuk menghemat daya, namun sistem tetap berjalan.
 
-apt install -y i2c-tools
-pip3 install RPLCD smbus2
+Langkah yang direkomendasikan (ada skrip otomatis di `scripts/lid-and-screen.sh` untuk menerapkan perubahan):
 
-i2cdetect -y 1
+A) Prevent suspend on lid close (systemd-logind)
+- Edit /etc/systemd/logind.conf dan set nilai berikut:
+  HandleLidSwitch=ignore
+  HandleLidSwitchDocked=ignore
+  HandleLidSwitchExternalPower=ignore
 
-Contoh script ada di `examples/i2c_lcd_example.py`.
+- Restart service:
+  systemctl restart systemd-logind
 
-10) Backup & monitoring
+B) Matikan layar setelah 10 menit idle (console blanking)
+- Tambahkan kernel parameter consoleblank=600 (600 detik = 10 menit) di GRUB agar blanking berlaku konsol default:
+  - Edit `/etc/default/grub` dan ubah baris `GRUB_CMDLINE_LINUX_DEFAULT` untuk menambahkan `consoleblank=600` jika belum ada.
+  - Contoh:
+    GRUB_CMDLINE_LINUX_DEFAULT="quiet consoleblank=600"
+  - Lalu jalankan: `update-grub`
 
-- Instal Netdata (opsional) untuk monitoring ringan:
-  bash <(curl -Ss https://my-netdata.io/kickstart.sh)
-- Atur backup VM/LXC melalui GUI Proxmox (Storage -> Scheduled Backup)
+- Selain kernel param, ada unit systemd (`consoleblank.service`) yang disertakan oleh skrip untuk menjalankan `setterm` pada tty1..tty6 sehingga layar konsol akan mati/powerdown setelah 10 menit.
 
-11) Skrip otomatis
+Catatan: Jika Anda menjalankan desktop/X, gunakan pengaturan DPMS/xset di lingkungan grafis; panduan ini mengasumsikan host Proxmox headless (no X).
+
+10) Skrip otomatis
 
 Skrip disediakan di `scripts/`:
-- scripts/proxmox-postinstall.sh — tugas post-install otomatis (tambahkan repo, update, install paket dasar, swap)
+- scripts/proxmox-postinstall.sh — tugas post-install otomatis (tambahkan repo, update, install paket dasar, swap, enable haveged, konfigurasi ufw)
 - scripts/ssh-setup.sh — setup user SSH dan konfigurasi dasar (harus disunting agar sesuai public key Anda)
+- scripts/lid-and-screen.sh — terapkan perubahan untuk mencegah suspend saat tutup tutup dan mengatur screen-off (console blanking 10 menit)
 
 ---
 
-## Struktur repo (baru)
+## Struktur repo (saat ini)
 
 - README.md (file ini)
 - scripts/
   - proxmox-postinstall.sh
   - ssh-setup.sh
-- examples/
-  - i2c_lcd_example.py
+  - lid-and-screen.sh
 
 ---
 
@@ -149,8 +159,12 @@ sudo ./scripts/proxmox-postinstall.sh
 
 4) Jalankan setup SSH (sesuaikan ARGUMENT):
 
-sudo ./scripts/ssh-setup.sh admin /path/to/pubkey.pub
+sudo ./scripts/ssh-setup.sh admin /path/to/your.pub
+
+5) Terapkan pengaturan lid & screen (sebagai root):
+
+sudo ./scripts/lid-and-screen.sh
 
 ---
 
-Jika Anda setuju, saya akan menambahkan skrip `scripts/proxmox-postinstall.sh`, `scripts/ssh-setup.sh`, dan contoh `examples/i2c_lcd_example.py` ke repo. Setelah itu kita lanjut membuat LXC template dan provisioning untuk app server.
+Jika Anda ingin, saya akan membuat beberapa template LXC dan contoh provisioning untuk layanan (Pi-hole, Home Assistant, Nextcloud). Beri tahu layanan mana yang ingin Anda prioritaskan.
